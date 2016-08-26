@@ -4,16 +4,24 @@ const dom = require('o3-dom');
 const X = require('ex');
 
 const searchBar = () => {
-  _.noop();
+  const filterText = X.observable('');
+  const inStockOnly = X.observable(false);
   return {
     content: [
       ':form',
-      [':input', { type: 'text', placeholder: 'Search...' }],
+      [':input', {
+        type: 'text',
+        placeholder: 'Search...',
+        onChange: X.boundCallback(filterText) }],
       [':p',
-       [':input', { type: 'checkbox' }],
+       [':input', {
+         type: 'checkbox',
+         onChange: X.boundCallback(inStockOnly) }],
        ' ', 'Only show products in stock',
       ],
     ],
+    filterText,
+    inStockOnly,
   };
 };
 
@@ -42,6 +50,13 @@ const productTable = (products) => [
   }, []),
 ];
 
+const filteredProducts = (products, filterText, inStockOnly) =>
+        X.map(
+          X.observeAll([filterText, inStockOnly]),
+          ([ft, iso]) => _.filter(
+            products,
+            (p) => _.includes(p.name, ft) && (!iso || p.stocked)));
+
 const PRODUCTS = [
   { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
   { category: 'Sporting Goods', price: '$9.99', stocked: true, name: 'Baseball' },
@@ -51,13 +66,17 @@ const PRODUCTS = [
   { category: 'Electronics', price: '$199.99', stocked: true, name: 'Nexus 7' },
 ];
 
+const search = searchBar();
+
 dom.attach(
   document,
   '#container',
   [
     ':div',
     { style: 'padding: 20px' },
-    searchBar().content,
-    productTable(PRODUCTS),
+    search.content,
+    X.map(
+      filteredProducts(PRODUCTS, search.filterText, search.inStockOnly),
+      productTable),
   ]
 );

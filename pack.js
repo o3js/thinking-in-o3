@@ -50,15 +50,24 @@
 	const X = __webpack_require__(10);
 
 	const searchBar = () => {
+	  const filterText = X.observable('');
+	  const inStockOnly = X.observable(false);
 	  return {
 	    content: [
 	      ':form',
-	      [':input', { type: 'text', placeholder: 'Search...' }],
+	      [':input', {
+	        type: 'text',
+	        placeholder: 'Search...',
+	        onChange: X.boundCallback(filterText) }],
 	      [':p',
-	       [':input', { type: 'checkbox' }],
+	       [':input', {
+	         type: 'checkbox',
+	         onChange: X.boundCallback(inStockOnly) }],
 	       ' ', 'Only show products in stock',
 	      ],
 	    ],
+	    filterText,
+	    inStockOnly,
 	  };
 	};
 
@@ -87,6 +96,13 @@
 	  }, []),
 	];
 
+	const filteredProducts = (products, filterText, inStockOnly) =>
+	        X.map(
+	          X.observeAll([filterText, inStockOnly]),
+	          ([ft, iso]) => _.filter(
+	            products,
+	            (p) => _.includes(p.name, ft) && (!iso || p.stocked)));
+
 	const PRODUCTS = [
 	  { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
 	  { category: 'Sporting Goods', price: '$9.99', stocked: true, name: 'Baseball' },
@@ -96,14 +112,18 @@
 	  { category: 'Electronics', price: '$199.99', stocked: true, name: 'Nexus 7' },
 	];
 
+	const search = searchBar();
+
 	dom.attach(
 	  document,
 	  '#container',
 	  [
 	    ':div',
 	    { style: 'padding: 20px' },
-	    searchBar().content,
-	    productTable(PRODUCTS),
+	    search.content,
+	    X.map(
+	      filteredProducts(PRODUCTS, search.filterText, search.inStockOnly),
+	      productTable),
 	  ]
 	);
 
@@ -35008,6 +35028,7 @@
 	const _ = __webpack_require__(11);
 	const assert = __webpack_require__(12).assert;
 	const LazyStream = __webpack_require__(13).LazyStream;
+	const GreedyObservable = __webpack_require__(14).GreedyObservable;
 
 	const fromArray = (arr) =>
 	        (next, error, complete) => {
@@ -35030,6 +35051,24 @@
 
 	const isStream = (thing) =>
 	        !!(thing && _.isFunction(thing.subscribe));
+
+	const assertStream = (thing) => {
+	  assert(isStream(thing), 'Not a stream: ' + JSON.stringify(thing));
+	};
+
+	const assertStreamArray = (thing) => {
+	  assert(_.isArray(thing), 'Not an array: ' + JSON.stringify(thing));
+	  _.each(thing, assertStream);
+	};
+
+	const assertStreamProps = (thing) => {
+	  assert(
+	    _.isObject(thing),
+	    'Not an object: ' + JSON.stringify(thing));
+	  _.each(thing, (val) => {
+	    assertStream(val);
+	  });
+	};
 
 	const makeSourceFn = (thing) => {
 	  if (_.isArray(thing)) {
@@ -35067,10 +35106,114 @@
 	  return str;
 	};
 
+	const isObservable = (thing) =>
+	        !!(thing
+	           && _.isFunction(thing.subscribe)
+	           && _.isFunction(thing.current));
+
+	const assertObservable = (thing) => {
+	  assert(isObservable(thing), 'Not an observable: ' + JSON.stringify(thing));
+	};
+
+	const assertObservablesArray = (thing) => {
+	  assert(_.isArray(thing), 'Not an array: ' + JSON.stringify(thing));
+	  _.each(thing, assertObservable);
+	};
+
+	const assertObservableProps = (thing) => {
+	  assert(
+	    _.isObject(thing),
+	    'Not an object: ' + JSON.stringify(thing));
+	  _.each(thing, (val) => {
+	    assertObservable(val);
+	  });
+	};
+
+	const observable = (arg1, arg2) =>
+	        new GreedyObservable(arg1, arg2 || stream());
+
+	const bind = (str, thing) => str.bind(makeSourceFn(thing), true);
+
+	const boundCallback = (str, mapper) => {
+	  let n;
+	  str.bind((next) => {
+	    n = next;
+	  }, true);
+	  return (item) => {
+	    if (n) {
+	      n(
+	        _.isFunction(mapper)
+	          ? mapper(item)
+	          : (_.isUndefined(mapper)
+	             ? item
+	             : mapper));
+	    }
+	  };
+	};
 
 	const each = (str, n, e, c) => str.subscribe(n, e, c);
 
-	module.exports = { stream, each };
+	const map = (str, mapper) => stream((next, error, complete) => {
+	  each(
+	    str,
+	    (item) => { next(mapper(item)); },
+	    error,
+	    complete);
+	});
+
+	const adjoinStreams = (strs, tuple) => stream((next, error, complete) => {
+	  const completed = _.map(strs, () => false);
+	  _.each(strs, (str, i) => {
+	    each(
+	      str,
+	      (item) => {
+	        tuple = _.clone(tuple);
+	        tuple[i] = item;
+	        next(tuple);
+	      },
+	      error,
+	      () => {
+	        completed[i] = true;
+	        if (_.all(completed)) {
+	          complete();
+	        }
+	      });
+	  });
+	});
+
+	const adjoin = (strs, defaults) => {
+	  defaults = defaults || _.map(strs, _.noop);
+	  assertStreamArray(strs);
+
+	  if (defaults) assert(_.isArray(defaults),
+	                       'adjoin takes an array of defaults');
+	  return adjoinStreams(strs, defaults);
+	};
+
+	const adjoinProps = (strs, defaults) => {
+	  assertStreamProps(strs);
+	  if (defaults) assert(_.isPlainObject(defaults),
+	                       'adjoinProps takes object of defaults');
+	  defaults = defaults || _.mapValues(strs, _.noop);
+	  strs = _.mapValues(strs, (val, key) => (
+	    isStream(val) ? val : adjoinProps(val, defaults && defaults[key])));
+	  return adjoinStreams(strs, defaults);
+	};
+
+	const observeAll = (sources) => {
+	  assertObservablesArray(sources);
+	  return observable(null, adjoin(sources));
+	};
+
+	module.exports = {
+	  stream,
+	  observable,
+	  bind,
+	  boundCallback,
+	  each,
+	  map,
+	  observeAll,
+	};
 
 
 /***/ },
@@ -51962,6 +52105,47 @@
 	}
 
 	module.exports = { LazyStream, configure };
+
+
+/***/ },
+/* 14 */
+/***/ function(module, exports) {
+
+	// const s = require('./stream');
+
+	class GreedyObservable {
+
+	  constructor(initialValue, str) {
+	    const self = this;
+	    // s.assertStream(str);
+
+	    self._currentValue = initialValue;
+	    self._source = str;
+	    str.subscribe(
+	      (item) => { self._currentValue = item; }
+	    );
+	  }
+
+	  subscribe(next, __, complete) {
+	    const self = this;
+	    __ = null;
+	    // TODO: only push changes
+	    next(self._currentValue);
+	    return self._source.subscribe(next, null, complete);
+	  }
+
+	  bind(...args) {
+	    const self = this;
+	    self._source.bind(...args);
+	  }
+
+	  current(cb) {
+	    const self = this;
+	    cb(self._currentValue);
+	  }
+	}
+
+	module.exports = { GreedyObservable };
 
 
 /***/ }
