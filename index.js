@@ -1,7 +1,7 @@
 /* global document: true */
 const _ = require('lodash');
 const dom = require('o3-dom');
-const X = require('ex');
+const { s, o } = require('ex');
 
 const PRODUCTS = [
   { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
@@ -13,24 +13,24 @@ const PRODUCTS = [
 ];
 
 const searchBar = () => {
-  const filterText = X.observable('');
-  const inStockOnly = X.observable(false);
+  const filterEvt = s.stream();
+  const stockedEvt = s.stream();
   return {
     content: [
       ':form',
       [':input', {
         type: 'text',
         placeholder: 'Search...',
-        oninput: X.boundCallback(filterText, (evt) => evt.target.value) }],
+        oninput: s.bind(filterEvt) }],
       [':p',
        [':input', {
          type: 'checkbox',
-         onchange: X.boundCallback(inStockOnly, (evt) => evt.target.checked) }],
+         onchange: s.bind(stockedEvt) }],
        ' ', 'Only show products in stock',
       ],
     ],
-    filterText,
-    inStockOnly,
+    filterText: o.observable('', s((e) => e.target.value, filterEvt)),
+    inStockOnly: o.observable(false, s((e) => e.target.checked, stockedEvt)),
   };
 };
 
@@ -60,14 +60,8 @@ const productTable = (products) => [
 ];
 
 
-const filterProducts = (products, filterText, inStockOnly) =>
-        X.map(
-          X.observeAll([filterText, inStockOnly]),
-          ([ft, iso]) => _.filter(
-            products,
-            (p) => _.includes(p.name, ft) && (!iso || p.stocked)));
-
 const search = searchBar();
+
 
 dom.attach(
   document,
@@ -76,8 +70,12 @@ dom.attach(
     ':div',
     { style: 'padding: 20px' },
     search.content,
-    X.map(
-      filterProducts(PRODUCTS, search.filterText, search.inStockOnly),
-      productTable),
+    o(productTable,
+      o(_.filter,
+       PRODUCTS,
+        o((filterText, inStockOnly) =>
+          (p) => _.includes(p.name, filterText) && (!inStockOnly || p.stocked),
+          search.filterText,
+          search.inStockOnly))),
   ]
 );

@@ -47,7 +47,7 @@
 	/* global document: true */
 	const _ = __webpack_require__(1);
 	const dom = __webpack_require__(3);
-	const X = __webpack_require__(10);
+	const { s, o } = __webpack_require__(10);
 
 	const PRODUCTS = [
 	  { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
@@ -59,24 +59,24 @@
 	];
 
 	const searchBar = () => {
-	  const filterText = X.observable('');
-	  const inStockOnly = X.observable(false);
+	  const filterEvt = s.stream();
+	  const stockedEvt = s.stream();
 	  return {
 	    content: [
 	      ':form',
 	      [':input', {
 	        type: 'text',
 	        placeholder: 'Search...',
-	        oninput: X.boundCallback(filterText, (evt) => evt.target.value) }],
+	        oninput: s.bind(filterEvt) }],
 	      [':p',
 	       [':input', {
 	         type: 'checkbox',
-	         onchange: X.boundCallback(inStockOnly, (evt) => evt.target.checked) }],
+	         onchange: s.bind(stockedEvt) }],
 	       ' ', 'Only show products in stock',
 	      ],
 	    ],
-	    filterText,
-	    inStockOnly,
+	    filterText: o.observable('', s((e) => e.target.value, filterEvt)),
+	    inStockOnly: o.observable(false, s((e) => e.target.checked, stockedEvt)),
 	  };
 	};
 
@@ -106,14 +106,8 @@
 	];
 
 
-	const filteredProducts = (products, filterText, inStockOnly) =>
-	        X.map(
-	          X.observeAll([filterText, inStockOnly]),
-	          ([ft, iso]) => _.filter(
-	            products,
-	            (p) => _.includes(p.name, ft) && (!iso || p.stocked)));
-
 	const search = searchBar();
+
 
 	dom.attach(
 	  document,
@@ -122,9 +116,13 @@
 	    ':div',
 	    { style: 'padding: 20px' },
 	    search.content,
-	    X.map(
-	      filteredProducts(PRODUCTS, search.filterText, search.inStockOnly),
-	      productTable),
+	    o(productTable,
+	      o(_.filter,
+	       PRODUCTS,
+	        o((filterText, inStockOnly) =>
+	          (p) => _.includes(p.name, filterText) && (!inStockOnly || p.stocked),
+	          search.filterText,
+	          search.inStockOnly))),
 	  ]
 	);
 
@@ -16893,6 +16891,7 @@
 	const _ = __webpack_require__(9);
 
 	const isTextNode = (x) => _.isNumber(x) || _.isString(x);
+	const isSubscribable = (x) => x && x.subscribe;
 
 	// TODO: this should be stricter... should attributes
 	// always be a Map type instead of an Object
@@ -16929,19 +16928,13 @@
 	let isNode;
 
 	const isElement = (x) => _.isArray(x)
-	      && isTagString(_.head(x))
-	        && _.every(getChildren(x), (c) => {
-	          const r = isNode(c);
-	          return r;
-	        });
+	        && isTagString(_.head(x))
+	        && _.every(getChildren(x), isNode);
 
-	isNode = (x) => isTextNode(x) || isElement(x) || x.subscribe;
+	isNode = (x) => isTextNode(x) || isElement(x) || isSubscribable(x);
 
 	const assertElement = (x, loc = 'root', idx = 0) => {
-	  if (x.subscribe) {
-	    return;
-	  }
-	  if (_.isString(x) || _.isNumber(x)) return;
+	  if (isTextNode(x) || isSubscribable(x)) return;
 	  assert(_.isArray(x),
 	         `Expected a string/number/array but got "${x}"`
 	         + ` at location: ${loc}[${idx}]`);
@@ -16974,6 +16967,7 @@
 	      if (el) el = setDynamic(el, xPrime);
 	      else el = render(xPrime, document);
 	    });
+	    el = el || render([':place-holder'], document);
 	    return el;
 	  }
 	  if (isTextNode(x)) return document.createTextNode(x);
@@ -17027,9 +17021,7 @@
 	};
 
 	setDynamic = (el, x) => {
-	  if (_.isUndefined(x) || _.isNull(x)) {
-	    return setStructure(el, [':null']);
-	  } if (_.isString(x) || _.isNumber(x)) {
+	  if (_.isString(x) || _.isNumber(x)) {
 	    return setText(el, x);
 	  }
 	  return setStructure(el, x);
@@ -35197,8 +35189,6 @@
 	const observable = (arg1, arg2) =>
 	        new GreedyObservable(arg1, arg2 || stream());
 
-	const bind = (str, thing) => str.bind(makeSourceFn(thing), true);
-
 	const boundCallback = (str, mapper) => {
 	  let n;
 	  str.bind((next) => {
@@ -35215,6 +35205,12 @@
 	    }
 	  };
 	};
+
+	const bind = (str, thing) => (
+	  thing
+	    ? str.bind(makeSourceFn(thing), true)
+	    : boundCallback(str)
+	);
 
 	const each = (str, n, e, c) => str.subscribe(n, e, c);
 
@@ -35239,7 +35235,7 @@
 	      error,
 	      () => {
 	        completed[i] = true;
-	        if (_.all(completed)) {
+	        if (_.every(completed)) {
 	          complete();
 	        }
 	      });
@@ -35265,20 +35261,17 @@
 	  return adjoinStreams(strs, defaults);
 	};
 
-	const observeAll = (sources) => {
-	  assertObservablesArray(sources);
-	  return observable(null, adjoin(sources));
-	};
+	const streamCast = (thing) => (
+	  (thing && thing.subscribe) ? thing : stream([thing]));
 
-	module.exports = {
-	  stream,
-	  observable,
-	  bind,
-	  boundCallback,
-	  each,
-	  map,
-	  observeAll,
-	};
+	const s = (fn, ...args) => map(adjoin(_.map(args, streamCast)), _.spread(fn));
+
+	const o = (fn, ...args) => observable(null, s(fn, ...args));
+
+	_.extend(s, { stream, bind, each });
+	_.extend(o, { observable });
+
+	module.exports = { s, o };
 
 
 /***/ },
