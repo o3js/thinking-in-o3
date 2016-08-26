@@ -3,6 +3,15 @@ const _ = require('lodash');
 const dom = require('o3-dom');
 const X = require('ex');
 
+const PRODUCTS = [
+  { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
+  { category: 'Sporting Goods', price: '$9.99', stocked: true, name: 'Baseball' },
+  { category: 'Sporting Goods', price: '$29.99', stocked: false, name: 'Basketball' },
+  { category: 'Electronics', price: '$99.99', stocked: true, name: 'iPod Touch' },
+  { category: 'Electronics', price: '$399.99', stocked: false, name: 'iPhone 5' },
+  { category: 'Electronics', price: '$199.99', stocked: true, name: 'Nexus 7' },
+];
+
 const searchBar = () => {
   const filterText = X.observable('');
   const inStockOnly = X.observable(false);
@@ -12,11 +21,11 @@ const searchBar = () => {
       [':input', {
         type: 'text',
         placeholder: 'Search...',
-        onChange: X.boundCallback(filterText) }],
+        oninput: X.boundCallback(filterText, (evt) => evt.target.value) }],
       [':p',
        [':input', {
          type: 'checkbox',
-         onChange: X.boundCallback(inStockOnly) }],
+         onchange: X.boundCallback(inStockOnly, (evt) => evt.target.checked) }],
        ' ', 'Only show products in stock',
       ],
     ],
@@ -50,21 +59,13 @@ const productTable = (products) => [
   }, []),
 ];
 
-const filteredProducts = (products, filterText, inStockOnly) =>
+
+const filterProducts = (products, filterText, inStockOnly) =>
         X.map(
           X.observeAll([filterText, inStockOnly]),
           ([ft, iso]) => _.filter(
             products,
             (p) => _.includes(p.name, ft) && (!iso || p.stocked)));
-
-const PRODUCTS = [
-  { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
-  { category: 'Sporting Goods', price: '$9.99', stocked: true, name: 'Baseball' },
-  { category: 'Sporting Goods', price: '$29.99', stocked: false, name: 'Basketball' },
-  { category: 'Electronics', price: '$99.99', stocked: true, name: 'iPod Touch' },
-  { category: 'Electronics', price: '$399.99', stocked: false, name: 'iPhone 5' },
-  { category: 'Electronics', price: '$199.99', stocked: true, name: 'Nexus 7' },
-];
 
 const search = searchBar();
 
@@ -76,7 +77,7 @@ dom.attach(
     { style: 'padding: 20px' },
     search.content,
     X.map(
-      filteredProducts(PRODUCTS, search.filterText, search.inStockOnly),
+      filterProducts(PRODUCTS, search.filterText, search.inStockOnly),
       productTable),
   ]
 );

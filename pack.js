@@ -49,6 +49,15 @@
 	const dom = __webpack_require__(3);
 	const X = __webpack_require__(10);
 
+	const PRODUCTS = [
+	  { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
+	  { category: 'Sporting Goods', price: '$9.99', stocked: true, name: 'Baseball' },
+	  { category: 'Sporting Goods', price: '$29.99', stocked: false, name: 'Basketball' },
+	  { category: 'Electronics', price: '$99.99', stocked: true, name: 'iPod Touch' },
+	  { category: 'Electronics', price: '$399.99', stocked: false, name: 'iPhone 5' },
+	  { category: 'Electronics', price: '$199.99', stocked: true, name: 'Nexus 7' },
+	];
+
 	const searchBar = () => {
 	  const filterText = X.observable('');
 	  const inStockOnly = X.observable(false);
@@ -58,11 +67,11 @@
 	      [':input', {
 	        type: 'text',
 	        placeholder: 'Search...',
-	        onChange: X.boundCallback(filterText) }],
+	        oninput: X.boundCallback(filterText, (evt) => evt.target.value) }],
 	      [':p',
 	       [':input', {
 	         type: 'checkbox',
-	         onChange: X.boundCallback(inStockOnly) }],
+	         onchange: X.boundCallback(inStockOnly, (evt) => evt.target.checked) }],
 	       ' ', 'Only show products in stock',
 	      ],
 	    ],
@@ -96,21 +105,13 @@
 	  }, []),
 	];
 
+
 	const filteredProducts = (products, filterText, inStockOnly) =>
 	        X.map(
 	          X.observeAll([filterText, inStockOnly]),
 	          ([ft, iso]) => _.filter(
 	            products,
 	            (p) => _.includes(p.name, ft) && (!iso || p.stocked)));
-
-	const PRODUCTS = [
-	  { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
-	  { category: 'Sporting Goods', price: '$9.99', stocked: true, name: 'Baseball' },
-	  { category: 'Sporting Goods', price: '$29.99', stocked: false, name: 'Basketball' },
-	  { category: 'Electronics', price: '$99.99', stocked: true, name: 'iPod Touch' },
-	  { category: 'Electronics', price: '$399.99', stocked: false, name: 'iPhone 5' },
-	  { category: 'Electronics', price: '$199.99', stocked: true, name: 'Nexus 7' },
-	];
 
 	const search = searchBar();
 
@@ -16916,7 +16917,8 @@
 	   ? _.tail(_.tail(x))
 	   : _.tail(x)),
 	  (result, item) => {
-	    if (_.isArray(item) && _.isArray(item[0])) {
+	    if (_.isArray(item)
+	        && (_.isArray(item[0]) || _.isEmpty(item))) {
 	      _.each(item, (i) => { result.push(i); });
 	    } else {
 	      result.push(item);
@@ -16924,13 +16926,21 @@
 	    return result;
 	  }, []);
 
-	let isNode = null;
+	let isNode;
 
 	const isElement = (x) => _.isArray(x)
 	      && isTagString(_.head(x))
-	      && _.every(getChildren(x), isNode);
+	        && _.every(getChildren(x), (c) => {
+	          const r = isNode(c);
+	          return r;
+	        });
+
+	isNode = (x) => isTextNode(x) || isElement(x) || x.subscribe;
 
 	const assertElement = (x, loc = 'root', idx = 0) => {
+	  if (x.subscribe) {
+	    return;
+	  }
 	  if (_.isString(x) || _.isNumber(x)) return;
 	  assert(_.isArray(x),
 	         `Expected a string/number/array but got "${x}"`
@@ -16943,7 +16953,6 @@
 	  _.each(getChildren(x), (y, i) => assertElement(y, `${loc}`, i + 1));
 	};
 
-	isNode = (x) => isTextNode(x) || isElement(x);
 
 	const attrs2DOMMapping = {
 	  class: (el, val) => { el.className = val; },
@@ -16957,7 +16966,16 @@
 	  });
 	}
 
-	function render(x, document) {
+	let setDynamic;
+	const render = (x, document) => {
+	  if (x.subscribe) {
+	    let el;
+	    x.subscribe((xPrime) => {
+	      if (el) el = setDynamic(el, xPrime);
+	      else el = render(xPrime, document);
+	    });
+	    return el;
+	  }
 	  if (isTextNode(x)) return document.createTextNode(x);
 	  if (isElement(x)) {
 	    const el = document.createElement(getTagName(x));
@@ -16968,13 +16986,60 @@
 	    return el;
 	  }
 	  return undefined;
-	}
+	};
+
+	const getDocument = (el) => {
+	  if (el.ownerDocument) return el.ownerDocument;
+	  while (el.parentNode) {
+	    el = el.parentNode;
+	  }
+	  return el;
+	};
+
+	const removeChildren = (el) => {
+	  while (el.lastChild) {
+	    el.removeChild(el.lastChild);
+	  }
+	};
+
+	const replaceEl = (oldEl, newEl) => {
+	  if (oldEl.parentNode) {
+	    oldEl.parentNode.replaceChild(newEl, oldEl);
+	  }
+	  return newEl;
+	};
+
+	const setText = (el, text) => {
+	  if (el.nodeType !== 3) {
+	    // not already a text node, so replace with one
+	    const newEl = getDocument(el).createTextNode(text);
+	    el.parentNode.replaceChild(newEl, el);
+	    return newEl;
+	  }
+	  removeChildren(el);
+	  el.data = text;
+	  return el;
+	};
+
+	const setStructure = (el, x) => {
+	  removeChildren(el);
+	  return replaceEl(el, render(x, getDocument(el)));
+	};
+
+	setDynamic = (el, x) => {
+	  if (_.isUndefined(x) || _.isNull(x)) {
+	    return setStructure(el, [':null']);
+	  } if (_.isString(x) || _.isNumber(x)) {
+	    return setText(el, x);
+	  }
+	  return setStructure(el, x);
+	};
 
 	function dom(x, document) {
 	  assertElement(x);
-	  return render(x, document);
+	  const r = render(x, document);
+	  return r;
 	}
-
 
 	function attach(document, tag, x) {
 	  document
