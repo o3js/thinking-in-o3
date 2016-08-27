@@ -34,34 +34,35 @@ const searchBar = () => {
   };
 };
 
-const categoryRow = (cat) => [':tr', [':th', { colSpan: 2 }, cat]];
+const productTable = (products) => {
+  const categoryRow = (cat) => [':tr', [':th', { colSpan: 2 }, cat]];
 
-const productRow = (product) => [
-  ':tr',
-  [':td',
-   { style: product.stocked ? '' : 'color: red' },
-   product.name],
-  [':td', product.price],
-];
+  const productRow = (product) => [
+    ':tr',
+    [':td',
+     { style: product.stocked ? '' : 'color: red' },
+     product.name],
+    [':td', product.price],
+  ];
 
-const productTable = (products) => [
-  ':table',
-  [':thead',
-   [':tr',
-    [':th', 'Name'],
-    [':th', 'Price']]],
-  _.reduce(products, (result, next, i) => {
-    if (_.get(products[i - 1], 'category') !== next.category) {
-      result.push(categoryRow(next.category));
-    }
-    result.push(productRow(next));
-    return result;
-  }, []),
-];
+  const rows = () =>
+          _.reduce(products, (result, next, i) => {
+            if (_.get(products[i - 1], 'category') !== next.category) {
+              result.push(categoryRow(next.category));
+            }
+            result.push(productRow(next));
+            return result;
+          }, []);
 
+  return [':table',
+          [':thead',
+           [':tr',
+            [':th', 'Name'],
+            [':th', 'Price']]],
+          [':tbody', rows()]];
+};
 
 const search = searchBar();
-
 
 dom.attach(
   document,
