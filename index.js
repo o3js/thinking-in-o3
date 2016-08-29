@@ -29,8 +29,10 @@ const searchBar = () => {
        ' ', 'Only show products in stock',
       ],
     ],
-    filterText: o.observable('', s((e) => e.target.value, filterEvt)),
-    inStockOnly: o.observable(false, s((e) => e.target.checked, stockedEvt)),
+    filterText: o.observable('',
+                             s.map(filterEvt, (e) => e.target.value)),
+    inStockOnly: o.observable(false,
+                              s.map(stockedEvt, (e) => e.target.checked)),
   };
 };
 
@@ -62,21 +64,24 @@ const productTable = (products) => {
           [':tbody', rows()]];
 };
 
+const filterProducts = (products, text, inStockOnly) =>
+        _.filter(
+          products,
+          (p) => _.includes(p.name, text) && (!inStockOnly || p.stocked));
+
 const search = searchBar();
 
-dom.attach(
-  document,
-  '#container',
-  [
-    ':div',
-    { style: 'padding: 20px' },
-    search.content,
-    o(productTable,
-      o(_.filter,
-       PRODUCTS,
-        o((filterText, inStockOnly) =>
-          (p) => _.includes(p.name, filterText) && (!inStockOnly || p.stocked),
-          search.filterText,
-          search.inStockOnly))),
-  ]
-);
+const filteredProductsTable = [
+  ':div',
+  { style: 'padding: 20px' },
+  search.content, // TODO: needs a better name than "content"
+  o(productTable,
+    o(filterProducts,
+      PRODUCTS,
+      search.filterText,
+      search.inStockOnly)),
+];
+
+document
+  .getElementById('container')
+  .appendChild(dom.render(document, filteredProductsTable));
