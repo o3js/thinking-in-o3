@@ -84,4 +84,4 @@ const filteredProductsTable = [
 
 document
   .getElementById('container')
-  .appendChild(dom.render(document, filteredProductsTable));
+  .appendChild(dom.render(filteredProductsTable, document));
