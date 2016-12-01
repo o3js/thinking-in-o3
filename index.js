@@ -1,7 +1,7 @@
 /* global document: true */
-const _ = require('lodash');
+const fp = require('lodash/fp');
 const dom = require('o3-dom');
-const { s, o } = require('ex');
+const z = require('zoetic');
 
 const PRODUCTS = [
   { category: 'Sporting Goods', price: '$49.99', stocked: true, name: 'Football' },
@@ -12,49 +12,60 @@ const PRODUCTS = [
   { category: 'Electronics', price: '$199.99', stocked: true, name: 'Nexus 7' },
 ];
 
-const searchBar = () => {
-  const filterEvt = s.stream();
-  const stockedEvt = s.stream();
+function searchBar() {
+  const filterEvt = z.emitter();
+  const stockedEvt = z.emitter();
   return {
     content: [
       ':form',
       [':input', {
         type: 'text',
         placeholder: 'Search...',
-        oninput: s.bind(filterEvt) }],
+        oninput: z.bind(filterEvt) }],
       [':p',
        [':input', {
          type: 'checkbox',
-         onchange: s.bind(stockedEvt) }],
+         onchange: z.bind(stockedEvt) }],
        ' ', 'Only show products in stock',
       ],
     ],
-    filterText: o.observable('',
-                             s.map(filterEvt, (e) => e.target.value)),
-    inStockOnly: o.observable(false,
-                              s.map(stockedEvt, (e) => e.target.checked)),
+
+    filterText: z.observable(
+      '',
+      z.map((e) => e.target.value, filterEvt)),
+
+    inStockOnly: z.observable(
+      false,
+      z.map((e) => e.target.checked, stockedEvt)),
   };
-};
+}
 
-const productTable = (products) => {
-  const categoryRow = (cat) => [':tr', [':th', { colSpan: 2 }, cat]];
+function productTable(products) {
+  function categoryRow(cat) {
+    return [':tr', [':th', { colSpan: 2 }, cat]];
+  }
 
-  const productRow = (product) => [
-    ':tr',
-    [':td',
-     { style: product.stocked ? '' : 'color: red' },
-     product.name],
-    [':td', product.price],
-  ];
+  function productRow(product) {
+    return [
+      ':tr',
+      [':td',
+       { style: product.stocked ? '' : 'color: red' },
+       product.name],
+      [':td', product.price],
+    ];
+  }
 
-  const rows = () =>
-          _.reduce(products, (result, next, i) => {
-            if (_.get(products[i - 1], 'category') !== next.category) {
-              result.push(categoryRow(next.category));
-            }
-            result.push(productRow(next));
-            return result;
-          }, []);
+  function rows() {
+    let prevCategory = null;
+    return fp.reduce((result, next) => {
+      if (prevCategory !== next.category) {
+        result.push(categoryRow(next.category));
+      }
+      result.push(productRow(next));
+      prevCategory = next.category;
+      return result;
+    }, [], products);
+  }
 
   return [':table',
           [':thead',
@@ -62,12 +73,13 @@ const productTable = (products) => {
             [':th', 'Name'],
             [':th', 'Price']]],
           [':tbody', rows()]];
-};
+}
 
-const filterProducts = (products, text, inStockOnly) =>
-        _.filter(
-          products,
-          (p) => _.includes(p.name, text) && (!inStockOnly || p.stocked));
+function filterProducts(products, text, inStockOnly) {
+  return fp.filter(
+    (p) => fp.includes(text, p.name) && (!inStockOnly || p.stocked),
+    products);
+}
 
 const search = searchBar();
 
@@ -75,11 +87,14 @@ const filteredProductsTable = [
   ':div',
   { style: 'padding: 20px' },
   search.content, // TODO: needs a better name than "content"
-  o(productTable,
-    o(filterProducts,
+  z.observe(
+    productTable,
+    z.observe(
+      filterProducts,
       PRODUCTS,
       search.filterText,
-      search.inStockOnly)),
+      search.inStockOnly)
+  ),
 ];
 
 document
