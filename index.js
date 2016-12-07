@@ -16,26 +16,23 @@ function searchBar() {
   const filterText = z.emitter();
   const inStockOnly = z.emitter();
 
-  const element = [
+  const el = [
     ':form',
     [':input', {
       type: 'text',
       placeholder: 'Search...',
-      mount: z.observel('value', 'input', filterText),
+      mount: z.bindel('value', 'input', filterText),
     }],
     [':p',
      [':input',
       { type: 'checkbox',
-        mount: z.observel('checked', 'change', inStockOnly),
+        mount: z.bindel('checked', 'change', inStockOnly),
       }],
      ' ', 'Only show products in stock',
     ],
   ];
-  return {
-    element,
-    filterText,
-    inStockOnly,
-  };
+
+  return { el, filterText, inStockOnly };
 }
 
 function categoryRow(cat) {
@@ -52,7 +49,7 @@ function productRow(product) {
   ];
 }
 
-function productTableRows(products) {
+function productRows(products) {
   let prevCategory = null;
   return _.reduce(products, (result, next) => {
     if (prevCategory !== next.category) {
@@ -64,35 +61,31 @@ function productTableRows(products) {
   }, []);
 }
 
-function productTable(products) {
+function productTable(products, text, inStockOnly) {
+  products = _.filter(
+    products,
+    (p) => _.includes(p.name, text) && (!inStockOnly || p.stocked));
   return [':table',
           [':thead',
            [':tr',
             [':th', 'Name'],
             [':th', 'Price']]],
-          [':tbody', productTableRows(products)]];
-}
-
-function filterProducts(products, text, inStockOnly) {
-  return _.filter(
-    products,
-    (p) => _.includes(p.name, text) && (!inStockOnly || p.stocked));
+          [':tbody', productRows(products)]];
 }
 
 const aSearchBar = searchBar();
 
-const filteredProductsTable = [
+const ui = [
   ':div',
   { style: 'padding: 20px' },
-  aSearchBar.element,
-  z.emitify(productTable)(
-    z.emitify(filterProducts)(
-      PRODUCTS,
-      aSearchBar.filterText,
-      aSearchBar.inStockOnly)
-  ),
+  aSearchBar.el,
+  z.apply(
+    productTable,
+    PRODUCTS,
+    aSearchBar.filterText,
+    aSearchBar.inStockOnly),
 ];
 
 document
   .getElementById('container')
-  .appendChild(dom.render(filteredProductsTable, document));
+  .appendChild(dom.render(ui, document));
