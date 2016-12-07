@@ -13,66 +13,64 @@ const PRODUCTS = [
 ];
 
 function searchBar() {
-  const filterEvt = z.emitter();
-  const stockedEvt = z.emitter();
-  return {
-    content: [
-      ':form',
-      [':input', {
-        type: 'text',
-        placeholder: 'Search...',
-        oninput: z.bind(filterEvt) }],
-      [':p',
-       [':input', {
-         type: 'checkbox',
-         onchange: z.bind(stockedEvt) }],
-       ' ', 'Only show products in stock',
-      ],
+  const filterText = z.emitter();
+  const inStockOnly = z.emitter();
+
+  const element = [
+    ':form',
+    [':input', {
+      type: 'text',
+      placeholder: 'Search...',
+      mount: z.observel('value', 'input', filterText),
+    }],
+    [':p',
+     [':input',
+      { type: 'checkbox',
+        mount: z.observel('checked', 'change', inStockOnly),
+      }],
+     ' ', 'Only show products in stock',
     ],
-
-    filterText: z.observable(
-      '',
-      z.map((e) => e.target.value, filterEvt)),
-
-    inStockOnly: z.observable(
-      false,
-      z.map((e) => e.target.checked, stockedEvt)),
+  ];
+  return {
+    element,
+    filterText,
+    inStockOnly,
   };
 }
 
+function categoryRow(cat) {
+  return [':tr', [':th', { colSpan: 2 }, cat]];
+}
+
+function productRow(product) {
+  return [
+    ':tr',
+    [':td',
+     { style: product.stocked ? '' : 'color: red' },
+     product.name],
+    [':td', product.price],
+  ];
+}
+
+function productTableRows(products) {
+  let prevCategory = null;
+  return fp.reduce((result, next) => {
+    if (prevCategory !== next.category) {
+      result.push(categoryRow(next.category));
+    }
+    result.push(productRow(next));
+    prevCategory = next.category;
+    return result;
+  }, [], products);
+}
+
 function productTable(products) {
-  function categoryRow(cat) {
-    return [':tr', [':th', { colSpan: 2 }, cat]];
-  }
-
-  function productRow(product) {
-    return [
-      ':tr',
-      [':td',
-       { style: product.stocked ? '' : 'color: red' },
-       product.name],
-      [':td', product.price],
-    ];
-  }
-
-  function rows() {
-    let prevCategory = null;
-    return fp.reduce((result, next) => {
-      if (prevCategory !== next.category) {
-        result.push(categoryRow(next.category));
-      }
-      result.push(productRow(next));
-      prevCategory = next.category;
-      return result;
-    }, [], products);
-  }
-
   return [':table',
           [':thead',
            [':tr',
             [':th', 'Name'],
             [':th', 'Price']]],
-          [':tbody', rows()]];
+          [':tbody', productTableRows(products)]];
 }
 
 function filterProducts(products, text, inStockOnly) {
@@ -81,19 +79,17 @@ function filterProducts(products, text, inStockOnly) {
     products);
 }
 
-const search = searchBar();
+const aSearchBar = searchBar();
 
 const filteredProductsTable = [
   ':div',
   { style: 'padding: 20px' },
-  search.content, // TODO: needs a better name than "content"
-  z.observe(
-    productTable,
-    z.observe(
-      filterProducts,
+  aSearchBar.element,
+  z.emitify(productTable)(
+    z.emitify(filterProducts)(
       PRODUCTS,
-      search.filterText,
-      search.inStockOnly)
+      aSearchBar.filterText,
+      aSearchBar.inStockOnly)
   ),
 ];
 
