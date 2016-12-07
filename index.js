@@ -1,5 +1,5 @@
 /* global document: true */
-const fp = require('lodash/fp');
+const _ = require('lodash');
 const dom = require('o3-dom');
 const z = require('zoetic');
 
@@ -54,14 +54,14 @@ function productRow(product) {
 
 function productTableRows(products) {
   let prevCategory = null;
-  return fp.reduce((result, next) => {
+  return _.reduce(products, (result, next) => {
     if (prevCategory !== next.category) {
       result.push(categoryRow(next.category));
     }
     result.push(productRow(next));
     prevCategory = next.category;
     return result;
-  }, [], products);
+  }, []);
 }
 
 function productTable(products) {
@@ -74,9 +74,9 @@ function productTable(products) {
 }
 
 function filterProducts(products, text, inStockOnly) {
-  return fp.filter(
-    (p) => fp.includes(text, p.name) && (!inStockOnly || p.stocked),
-    products);
+  return _.filter(
+    products,
+    (p) => _.includes(p.name, text) && (!inStockOnly || p.stocked));
 }
 
 const aSearchBar = searchBar();
